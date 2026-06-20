@@ -1,0 +1,8 @@
+# OS / editor cruft
+Thumbs.db
+.DS_Store
+*.swp
+.vscode/
+
+# transient
+*.log

@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "items": [
+    {
+      "id": "chrome", "name": "Google Chrome", "description": "Web browser", "category": "Browsers",
+      "method": "winget", "payload": "Google.Chrome", "default": true,
+      "fallback": {
+        "method": "download",
+        "url": "https://dl.google.com/dl/chrome/install/googlechromestandaloneenterprise64.msi",
+        "file": "googlechromestandaloneenterprise64.msi",
+        "args": "/qn /norestart"
+      }
+    },
+    {
+      "id": "firefox", "name": "Mozilla Firefox", "description": "Web browser", "category": "Browsers",
+      "method": "winget", "payload": "Mozilla.Firefox", "default": false,
+      "fallback": {
+        "method": "download",
+        "url": "https://download.mozilla.org/?product=firefox-latest-ssl&os=win64&lang=en-US",
+        "file": "firefox-setup.exe",
+        "args": "/S"
+      }
+    },
+
+    { "id": "7zip",          "name": "7-Zip",              "description": "File archiver",                       "category": "Utilities",  "method": "winget", "payload": "7zip.7zip",                      "default": true  },
+    { "id": "notepadpp",     "name": "Notepad++",          "description": "Text/code editor",                    "category": "Utilities",  "method": "winget", "payload": "Notepad++.Notepad++",            "default": true  },
+    { "id": "powertoys",     "name": "PowerToys",          "description": "Windows power-user utilities",        "category": "Utilities",  "method": "winget", "payload": "Microsoft.PowerToys",            "default": true  },
+    { "id": "vlc",           "name": "VLC Media Player",   "description": "Media player",                        "category": "Utilities",  "method": "winget", "payload": "VideoLAN.VLC",                   "default": false },
+    {
+      "id": "sumatra", "name": "SumatraPDF", "description": "Lightweight PDF / ebook reader", "category": "Utilities",
+      "method": "winget", "payload": "SumatraPDF.SumatraPDF", "default": false,
+      "fallback": {
+        "method": "download",
+        "url": "https://www.sumatrapdfreader.org/dl/rel/3.5.2/SumatraPDF-3.5.2-64-install.exe",
+        "file": "SumatraPDF-install.exe",
+        "args": "-install -all-users -s"
+      }
+    },
+
+    { "id": "git",           "name": "Git",                "description": "Version control",                     "category": "Dev / IT",   "method": "winget", "payload": "Git.Git",                        "default": true  },
+    { "id": "vscode",        "name": "VS Code",            "description": "Code editor",                         "category": "Dev / IT",   "method": "winget", "payload": "Microsoft.VisualStudioCode",     "default": true  },
+    { "id": "winterminal",   "name": "Windows Terminal",   "description": "Modern terminal",                     "category": "Dev / IT",   "method": "winget", "payload": "Microsoft.WindowsTerminal",      "default": true  },
+    { "id": "pwsh",          "name": "PowerShell 7",       "description": "Cross-platform PowerShell",           "category": "Dev / IT",   "method": "winget", "payload": "Microsoft.PowerShell",           "default": true  },
+
+    {
+      "id": "zoom", "name": "Zoom", "description": "Video conferencing", "category": "Comms",
+      "method": "winget", "payload": "Zoom.Zoom", "default": false,
+      "fallback": {
+        "method": "download",
+        "url": "https://zoom.us/client/latest/ZoomInstallerFull.msi?archType=x64",
+        "file": "ZoomInstallerFull.msi",
+        "args": "/qn /norestart"
+      }
+    },
+    { "id": "slack",         "name": "Slack",              "description": "Team chat",                           "category": "Comms",      "method": "winget", "payload": "SlackTechnologies.Slack",        "default": false },
+
+    { "id": "anydesk",       "name": "AnyDesk",            "description": "Remote support",                      "category": "Remote",     "method": "winget", "payload": "AnyDeskSoftwareGmbH.AnyDesk",    "default": false },
+    { "id": "teamviewer",    "name": "TeamViewer",         "description": "Remote support",                      "category": "Remote",     "method": "winget", "payload": "TeamViewer.TeamViewer",          "default": false },
+
+    { "id": "powerplan",     "name": "High Performance power plan", "description": "Activate the High Performance power scheme",                 "category": "Tweaks", "method": "script", "payload": "Set-PowerPlanHigh.ps1",   "default": true  },
+    { "id": "explorer",      "name": "Explorer tweaks",            "description": "Show file extensions, hidden files, open to This PC",        "category": "Tweaks", "method": "script", "payload": "Set-ExplorerTweaks.ps1",  "default": true  },
+    { "id": "telemetry",     "name": "Minimize telemetry",         "description": "Set Windows telemetry policy to the lowest allowed level",   "category": "Tweaks", "method": "script", "payload": "Disable-Telemetry.ps1",   "default": false }
+  ]
+}

@@ -5,7 +5,7 @@
 .DESCRIPTION
     Entry point intended to be run via:
 
-        irm https://raw.githubusercontent.com/<you>/windows-setup-toolkit/main/launcher.ps1 | iex
+        irm https://raw.githubusercontent.com/TAND-Inc/tand-windows-setup/main/launcher.ps1 | iex
 
     Loads a JSON manifest of apps/scripts from the repo and presents a WPF
     selection menu. Selected items are installed (winget/choco/download) or run (scripts).
@@ -22,7 +22,7 @@
 # ============================================================================
 #  CONFIGURATION  -- point this at the RAW base of your repo (no trailing slash)
 # ============================================================================
-$BaseUrl = 'https://raw.githubusercontent.com/<you>/windows-setup-toolkit/main'
+$BaseUrl = 'https://raw.githubusercontent.com/TAND-Inc/tand-windows-setup/main'
 
 # ============================================================================
 #  PREREQUISITES

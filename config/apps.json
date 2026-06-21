@@ -22,9 +22,36 @@
       }
     },
 
-    { "id": "7zip",          "name": "7-Zip",              "description": "File archiver",                       "category": "Utilities",  "method": "winget", "payload": "7zip.7zip",                      "default": true  },
-    { "id": "notepadpp",     "name": "Notepad++",          "description": "Text/code editor",                    "category": "Utilities",  "method": "winget", "payload": "Notepad++.Notepad++",            "default": true  },
-    { "id": "powertoys",     "name": "PowerToys",          "description": "Windows power-user utilities",        "category": "Utilities",  "method": "winget", "payload": "Microsoft.PowerToys",            "default": true  },
+    {
+      "id": "7zip", "name": "7-Zip", "description": "File archiver", "category": "Utilities",
+      "method": "winget", "payload": "7zip.7zip", "default": true,
+      "fallback": {
+        "method": "download",
+        "url": "https://www.7-zip.org/a/7z2301-x64.exe",
+        "file": "7zip-x64.exe",
+        "args": "/S"
+      }
+    },
+    {
+      "id": "notepadpp", "name": "Notepad++", "description": "Text/code editor", "category": "Utilities",
+      "method": "winget", "payload": "Notepad++.Notepad++", "default": true,
+      "fallback": {
+        "method": "download",
+        "url": "https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.6.2/npp.8.6.2.Installer.x64.exe",
+        "file": "npp-installer-x64.exe",
+        "args": "/S"
+      }
+    },
+    {
+      "id": "powertoys", "name": "PowerToys", "description": "Windows power-user utilities", "category": "Utilities",
+      "method": "winget", "payload": "Microsoft.PowerToys", "default": true,
+      "fallback": {
+        "method": "download",
+        "url": "https://github.com/microsoft/PowerToys/releases/download/v0.79.0/PowerToysSetup-0.79.0-x64.exe",
+        "file": "PowerToysSetup-x64.exe",
+        "args": "/install /quiet /norestart"
+      }
+    },
     { "id": "vlc",           "name": "VLC Media Player",   "description": "Media player",                        "category": "Utilities",  "method": "winget", "payload": "VideoLAN.VLC",                   "default": false },
     {
       "id": "sumatra", "name": "SumatraPDF", "description": "Lightweight PDF / ebook reader", "category": "Utilities",
@@ -37,10 +64,37 @@
       }
     },
 
-    { "id": "git",           "name": "Git",                "description": "Version control",                     "category": "Dev / IT",   "method": "winget", "payload": "Git.Git",                        "default": true  },
-    { "id": "vscode",        "name": "VS Code",            "description": "Code editor",                         "category": "Dev / IT",   "method": "winget", "payload": "Microsoft.VisualStudioCode",     "default": true  },
+    {
+      "id": "git", "name": "Git", "description": "Version control", "category": "Dev / IT",
+      "method": "winget", "payload": "Git.Git", "default": true,
+      "fallback": {
+        "method": "download",
+        "url": "https://github.com/git-for-windows/git/releases/download/v2.45.2.windows.1/Git-2.45.2-64-bit.exe",
+        "file": "Git-64-bit.exe",
+        "args": "/VERYSILENT /NORESTART /NOCANCEL /SP-"
+      }
+    },
+    {
+      "id": "vscode", "name": "VS Code", "description": "Code editor", "category": "Dev / IT",
+      "method": "winget", "payload": "Microsoft.VisualStudioCode", "default": true,
+      "fallback": {
+        "method": "download",
+        "url": "https://update.code.visualstudio.com/latest/win32-x64/stable",
+        "file": "VSCodeSetup-x64.exe",
+        "args": "/VERYSILENT /NORESTART /MERGETASKS=!runcode"
+      }
+    },
     { "id": "winterminal",   "name": "Windows Terminal",   "description": "Modern terminal",                     "category": "Dev / IT",   "method": "winget", "payload": "Microsoft.WindowsTerminal",      "default": true  },
-    { "id": "pwsh",          "name": "PowerShell 7",       "description": "Cross-platform PowerShell",           "category": "Dev / IT",   "method": "winget", "payload": "Microsoft.PowerShell",           "default": true  },
+    {
+      "id": "pwsh", "name": "PowerShell 7", "description": "Cross-platform PowerShell", "category": "Dev / IT",
+      "method": "winget", "payload": "Microsoft.PowerShell", "default": true,
+      "fallback": {
+        "method": "download",
+        "url": "https://github.com/PowerShell/PowerShell/releases/download/v7.4.5/PowerShell-7.4.5-win-x64.msi",
+        "file": "PowerShell-7-x64.msi",
+        "args": "/qn /norestart"
+      }
+    },
 
     {
       "id": "zoom", "name": "Zoom", "description": "Video conferencing", "category": "Comms",

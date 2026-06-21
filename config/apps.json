@@ -66,7 +66,7 @@
 
     {
       "id": "git", "name": "Git", "description": "Version control", "category": "Dev / IT",
-      "method": "winget", "payload": "Git.Git", "default": true,
+      "method": "winget", "payload": "Git.Git", "default": true, "detect": "Git version",
       "fallback": {
         "method": "download",
         "url": "https://github.com/git-for-windows/git/releases/download/v2.45.2.windows.1/Git-2.45.2-64-bit.exe",
@@ -76,7 +76,7 @@
     },
     {
       "id": "vscode", "name": "VS Code", "description": "Code editor", "category": "Dev / IT",
-      "method": "winget", "payload": "Microsoft.VisualStudioCode", "default": true,
+      "method": "winget", "payload": "Microsoft.VisualStudioCode", "default": true, "detect": "Visual Studio Code",
       "fallback": {
         "method": "download",
         "url": "https://update.code.visualstudio.com/latest/win32-x64/stable",

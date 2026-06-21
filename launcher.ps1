@@ -17,6 +17,10 @@
     Store and therefore without winget. Install-Winget bootstraps it on demand, and
     any manifest item may carry a "fallback" (typically a direct download) used when
     the primary method is unavailable or fails.
+
+    The menu reopens after each run so multiple batches can be applied in one session.
+    Already-installed items are detected from the uninstall registry and labelled with
+    their version.
 #>
 
 # ============================================================================
@@ -40,6 +44,7 @@ Add-Type -AssemblyName PresentationCore
 Add-Type -AssemblyName WindowsBase
 
 $script:WingetAvailable = $false
+$script:WingetTried     = $false
 
 # ============================================================================
 #  HELPERS
@@ -64,6 +69,69 @@ function Get-Manifest {
     } catch {
         throw "Failed to load manifest from $Url`n$_"
     }
+}
+
+function Get-InstalledPrograms {
+    <#
+      Snapshot of installed desktop programs from the uninstall registry keys
+      (HKLM 64-bit, HKLM 32-bit, HKCU). Returns objects with Name + Version.
+      This works WITHOUT winget, which matters on a fresh LTSC box, and it picks
+      up anything installed via MSI or a normal EXE installer. Note: MSIX/Store
+      apps (e.g. Windows Terminal) do NOT appear here.
+    #>
+    $paths = @(
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
+        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*',
+        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*'
+    )
+    $list = New-Object System.Collections.Generic.List[object]
+    foreach ($p in $paths) {
+        try {
+            Get-ItemProperty -Path $p -ErrorAction SilentlyContinue | ForEach-Object {
+                if ($_.DisplayName) {
+                    $list.Add([pscustomobject]@{
+                        Name    = [string]$_.DisplayName
+                        Version = [string]$_.DisplayVersion
+                    })
+                }
+            }
+        } catch { }
+    }
+    $list
+}
+
+function Get-ItemInstallInfo {
+    <#
+      Decide whether a manifest item is already installed, and at what version.
+      Only app methods are detectable; tweak/script items always return $null.
+      Match on the optional `detect` string, falling back to the item `name`.
+    #>
+    param($Item, $Installed)
+
+    if (@('winget', 'choco', 'download') -notcontains $Item.method) { return $null }
+
+    $needle =
+        if (($Item.PSObject.Properties.Name -contains 'detect') -and $Item.detect) { $Item.detect }
+        else { $Item.name }
+
+    $hit = $Installed | Where-Object { $_.Name -like "*$needle*" } | Select-Object -First 1
+    if ($hit) {
+        $ver = if ($hit.Version) { $hit.Version } else { 'unknown' }
+        return [pscustomobject]@{ Installed = $true; Version = $ver }
+    }
+    return $null
+}
+
+function Get-WingetStatus {
+    # Refresh PATH first: a provisioned winget.exe may not be on PATH yet this session.
+    $env:Path += ";$env:LOCALAPPDATA\Microsoft\WindowsApps"
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+        $ver = $null
+        try { $ver = (winget --version) 2>$null } catch { }
+        if ($ver) { return "winget is installed ($ver)." }
+        return "winget is installed."
+    }
+    return "winget is NOT installed. It will be bootstrapped automatically when a winget item runs."
 }
 
 function Install-Winget {
@@ -225,6 +293,129 @@ function Invoke-ToolkitItem {
     }
 }
 
+function Show-ToolkitMenu {
+    <#
+      Build a fresh WPF window from the manifest, detecting installed state each
+      time it opens, and return @{ Action = 'run'|'close'; Selected = @(items) }.
+    #>
+    param($Manifest)
+
+    $installed = Get-InstalledPrograms
+
+    $Xaml = @'
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Windows Setup Toolkit" Height="710" Width="600"
+        WindowStartupLocation="CenterScreen" Background="#1E1E2E"
+        FontFamily="Segoe UI">
+  <Grid Margin="16">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+
+    <StackPanel Grid.Row="0" Margin="0,0,0,10">
+      <TextBlock Text="Windows Setup Toolkit" FontSize="22" FontWeight="Bold" Foreground="#CDD6F4"/>
+      <TextBlock Text="Select apps and tweaks to apply, then click Run Selected. The menu reopens after each run."
+                 FontSize="12" Foreground="#A6ADC8" Margin="0,2,0,0" TextWrapping="Wrap"/>
+    </StackPanel>
+
+    <Border Grid.Row="1" BorderBrush="#45475A" BorderThickness="1" CornerRadius="6"
+            Background="#181825" Padding="10" Margin="0,0,0,10">
+      <DockPanel LastChildFill="True">
+        <Button x:Name="WingetCheckBtn" Content="Check winget" Width="120" Height="30"
+                DockPanel.Dock="Left" Background="#45475A" Foreground="#CDD6F4" BorderThickness="0"/>
+        <TextBlock x:Name="WingetStatus" Text="winget status unknown - click &quot;Check winget&quot;."
+                   VerticalAlignment="Center" Margin="12,0,0,0" Foreground="#A6ADC8" TextWrapping="Wrap"/>
+      </DockPanel>
+    </Border>
+
+    <Border Grid.Row="2" BorderBrush="#45475A" BorderThickness="1" CornerRadius="6" Background="#181825">
+      <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="10">
+        <StackPanel x:Name="ItemsPanel"/>
+      </ScrollViewer>
+    </Border>
+
+    <DockPanel Grid.Row="3" Margin="0,12,0,0" LastChildFill="False">
+      <Button x:Name="SelectAllBtn"   Content="Select All"  Width="90"  Height="32" DockPanel.Dock="Left"/>
+      <Button x:Name="SelectNoneBtn"  Content="Clear"       Width="70"  Height="32" Margin="8,0,0,0" DockPanel.Dock="Left"/>
+      <Button x:Name="RecommendedBtn" Content="Recommended" Width="110" Height="32" Margin="8,0,0,0" DockPanel.Dock="Left"/>
+      <Button x:Name="RunBtn"   Content="Run Selected" Width="130" Height="32" DockPanel.Dock="Right"
+              Background="#89B4FA" Foreground="#1E1E2E" FontWeight="Bold" BorderThickness="0"/>
+      <Button x:Name="CloseBtn" Content="Close" Width="80" Height="32" Margin="0,0,8,0" DockPanel.Dock="Right"/>
+    </DockPanel>
+  </Grid>
+</Window>
+'@
+
+    $reader = [System.Xml.XmlNodeReader]::new([xml]$Xaml)
+    $window = [Windows.Markup.XamlReader]::Load($reader)
+    $panel  = $window.FindName('ItemsPanel')
+
+    # Populate the panel from the manifest, grouped by category.
+    $checkboxes = New-Object System.Collections.Generic.List[object]
+    foreach ($group in ($Manifest.items | Group-Object category)) {
+        $header = New-Object Windows.Controls.TextBlock
+        $header.Text       = $group.Name
+        $header.FontWeight = 'Bold'
+        $header.FontSize   = 14
+        $header.Foreground = New-Brush '#F9E2AF'
+        $header.Margin     = '0,10,0,4'
+        $panel.AddChild($header)
+
+        foreach ($item in $group.Group) {
+            $info = Get-ItemInstallInfo -Item $item -Installed $installed
+
+            $cb = New-Object Windows.Controls.CheckBox
+            if ($info) {
+                $cb.Content    = "$($item.name)  (Installed - Version: $($info.Version))"
+                $cb.Foreground = New-Brush '#A6E3A1'   # green = already installed
+            } else {
+                $cb.Content    = $item.name
+                $cb.Foreground = New-Brush '#CDD6F4'
+            }
+            $cb.ToolTip   = $item.description
+            $cb.IsChecked = $false                      # nothing checked at launch
+            $cb.Margin    = '6,3,0,3'
+            $cb.Tag       = $item
+            $panel.AddChild($cb)
+            $checkboxes.Add($cb)
+        }
+    }
+
+    # Selection buttons.
+    $window.FindName('SelectAllBtn').Add_Click({   foreach ($c in $checkboxes) { $c.IsChecked = $true } })
+    $window.FindName('SelectNoneBtn').Add_Click({  foreach ($c in $checkboxes) { $c.IsChecked = $false } })
+    $window.FindName('RecommendedBtn').Add_Click({ foreach ($c in $checkboxes) { $c.IsChecked = [bool]$c.Tag.default } })
+
+    # winget status button.
+    $statusBlock = $window.FindName('WingetStatus')
+    $window.FindName('WingetCheckBtn').Add_Click({
+        $msg = Get-WingetStatus
+        $statusBlock.Text = $msg
+        if ($msg -like '*NOT installed*') { $statusBlock.Foreground = New-Brush '#F38BA8' }
+        else                              { $statusBlock.Foreground = New-Brush '#A6E3A1' }
+    })
+
+    # Result plumbing.
+    $script:MenuAction   = 'close'
+    $script:MenuSelected = @()
+    $window.FindName('RunBtn').Add_Click({
+        $script:MenuSelected = @($checkboxes | Where-Object { $_.IsChecked } | ForEach-Object { $_.Tag })
+        $script:MenuAction   = 'run'
+        $window.Close()
+    })
+    $window.FindName('CloseBtn').Add_Click({
+        $script:MenuAction = 'close'
+        $window.Close()
+    })
+
+    $null = $window.ShowDialog()
+    [pscustomobject]@{ Action = $script:MenuAction; Selected = $script:MenuSelected }
+}
+
 # ============================================================================
 #  ADMIN CHECK  (installs and HKLM tweaks need elevation)
 # ============================================================================
@@ -246,101 +437,31 @@ $manifest = Get-Manifest -Url "$BaseUrl/config/apps.json"
 if (-not $manifest.items) { throw "Manifest contained no items." }
 
 # ============================================================================
-#  BUILD WPF WINDOW
+#  MAIN LOOP  (menu -> run -> reopen menu, until Close)
 # ============================================================================
-$Xaml = @'
-<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Windows Setup Toolkit" Height="660" Width="540"
-        WindowStartupLocation="CenterScreen" Background="#1E1E2E"
-        FontFamily="Segoe UI">
-  <Grid Margin="16">
-    <Grid.RowDefinitions>
-      <RowDefinition Height="Auto"/>
-      <RowDefinition Height="*"/>
-      <RowDefinition Height="Auto"/>
-    </Grid.RowDefinitions>
+do {
+    $menu = Show-ToolkitMenu -Manifest $manifest
 
-    <StackPanel Grid.Row="0" Margin="0,0,0,12">
-      <TextBlock Text="Windows Setup Toolkit" FontSize="22" FontWeight="Bold" Foreground="#CDD6F4"/>
-      <TextBlock Text="Select apps and tweaks to apply, then click Run Selected."
-                 FontSize="12" Foreground="#A6ADC8" Margin="0,2,0,0"/>
-    </StackPanel>
+    if ($menu.Action -ne 'run') { break }
 
-    <Border Grid.Row="1" BorderBrush="#45475A" BorderThickness="1" CornerRadius="6" Background="#181825">
-      <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="10">
-        <StackPanel x:Name="ItemsPanel"/>
-      </ScrollViewer>
-    </Border>
-
-    <DockPanel Grid.Row="2" Margin="0,12,0,0" LastChildFill="False">
-      <Button x:Name="SelectAllBtn"  Content="Select All" Width="90"  Height="32" DockPanel.Dock="Left"/>
-      <Button x:Name="SelectNoneBtn" Content="Clear"      Width="70"  Height="32" Margin="8,0,0,0" DockPanel.Dock="Left"/>
-      <Button x:Name="RunBtn"   Content="Run Selected" Width="130" Height="32" DockPanel.Dock="Right"
-              Background="#89B4FA" Foreground="#1E1E2E" FontWeight="Bold" BorderThickness="0"/>
-      <Button x:Name="CancelBtn" Content="Cancel" Width="80" Height="32" Margin="0,0,8,0" DockPanel.Dock="Right"/>
-    </DockPanel>
-  </Grid>
-</Window>
-'@
-
-$reader  = [System.Xml.XmlNodeReader]::new([xml]$Xaml)
-$window  = [Windows.Markup.XamlReader]::Load($reader)
-$panel   = $window.FindName('ItemsPanel')
-
-# Populate the panel from the manifest, grouped by category.
-$checkboxes = New-Object System.Collections.Generic.List[object]
-foreach ($group in ($manifest.items | Group-Object category)) {
-    $header = New-Object Windows.Controls.TextBlock
-    $header.Text       = $group.Name
-    $header.FontWeight = 'Bold'
-    $header.FontSize   = 14
-    $header.Foreground = New-Brush '#F9E2AF'
-    $header.Margin     = '0,10,0,4'
-    $panel.AddChild($header)
-
-    foreach ($item in $group.Group) {
-        $cb = New-Object Windows.Controls.CheckBox
-        $cb.Content    = $item.name
-        $cb.ToolTip    = $item.description
-        $cb.IsChecked  = [bool]$item.default
-        $cb.Foreground = New-Brush '#CDD6F4'
-        $cb.Margin     = '6,3,0,3'
-        $cb.Tag        = $item
-        $panel.AddChild($cb)
-        $checkboxes.Add($cb)
+    if (-not $menu.Selected -or $menu.Selected.Count -eq 0) {
+        Write-Host "Nothing selected." -ForegroundColor Yellow
+        continue   # reopen the menu
     }
-}
 
-# Wire up buttons.
-$window.FindName('SelectAllBtn').Add_Click({  foreach ($c in $checkboxes) { $c.IsChecked = $true } })
-$window.FindName('SelectNoneBtn').Add_Click({ foreach ($c in $checkboxes) { $c.IsChecked = $false } })
-$window.FindName('CancelBtn').Add_Click({ $window.Close() })
+    # Bootstrap winget once per session, only if something selected needs it.
+    if ($menu.Selected | Where-Object { $_.method -eq 'winget' }) {
+        if (-not $script:WingetAvailable -and -not $script:WingetTried) {
+            $script:WingetTried     = $true
+            $script:WingetAvailable = Install-Winget
+        }
+    }
 
-$script:Selected = @()
-$window.FindName('RunBtn').Add_Click({
-    $script:Selected = @($checkboxes | Where-Object { $_.IsChecked } | ForEach-Object { $_.Tag })
-    $window.Close()
-})
+    Write-Host "`nRunning $($menu.Selected.Count) item(s)...`n" -ForegroundColor White
+    foreach ($item in $menu.Selected) {
+        Invoke-ToolkitItem -Item $item -BaseUrl $BaseUrl
+    }
+    Write-Host "`nBatch complete. Reopening the menu..." -ForegroundColor Green
+} while ($true)
 
-$null = $window.ShowDialog()
-
-# ============================================================================
-#  EXECUTE SELECTION
-# ============================================================================
-if (-not $script:Selected -or $script:Selected.Count -eq 0) {
-    Write-Host "Nothing selected. Exiting." -ForegroundColor Yellow
-    return
-}
-
-# Bootstrap winget once, but only if something in the selection actually needs it
-# (as a primary method). Items fall back to their own download if this fails.
-if ($script:Selected | Where-Object { $_.method -eq 'winget' }) {
-    $script:WingetAvailable = Install-Winget
-}
-
-Write-Host "`nRunning $($script:Selected.Count) item(s)...`n" -ForegroundColor White
-foreach ($item in $script:Selected) {
-    Invoke-ToolkitItem -Item $item -BaseUrl $BaseUrl
-}
-Write-Host "`nAll done." -ForegroundColor Green
+Write-Host "`nClosing the toolkit. Done." -ForegroundColor Green

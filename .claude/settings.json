@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git status:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git pull:*)",
+      "Bash(git tag:*)",
+      "Read(./**)",
+      "Edit(./launcher.ps1)",
+      "Edit(./config/**)",
+      "Write(./config/**)",
+      "Edit(./scripts/**)",
+      "Write(./scripts/**)",
+      "Edit(./docs/**)",
+      "Edit(./README.md)",
+      "Edit(./CLAUDE.md)",
+      "Edit(./.claude/**)",
+      "Write(./.claude/**)"
+    ],
+    "ask": [
+      "Bash(git push:*)"
+    ],
+    "deny": [
+      "Read(./**/.env)",
+      "Read(./**/*.key)",
+      "Read(./**/*.pem)"
+    ]
+  }
+}

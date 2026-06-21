@@ -6,4 +6,6 @@ Thumbs.db
 
 # transient
 *.log
-*.ffs_db
+
+# Claude Code personal/local config (keep shared settings.json committed)
+.claude/settings.local.json

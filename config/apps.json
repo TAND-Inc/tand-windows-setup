@@ -111,8 +111,27 @@
     { "id": "anydesk",       "name": "AnyDesk",            "description": "Remote support",                      "category": "Remote",     "method": "winget", "payload": "AnyDeskSoftwareGmbH.AnyDesk",    "default": false },
     { "id": "teamviewer",    "name": "TeamViewer",         "description": "Remote support",                      "category": "Remote",     "method": "winget", "payload": "TeamViewer.TeamViewer",          "default": false },
 
-    { "id": "powerplan",     "name": "High Performance power plan", "description": "Activate the High Performance power scheme",                 "category": "Tweaks", "method": "script", "payload": "Set-PowerPlanHigh.ps1",   "default": true  },
-    { "id": "explorer",      "name": "Explorer tweaks",            "description": "Show file extensions, hidden files, open to This PC",        "category": "Tweaks", "method": "script", "payload": "Set-ExplorerTweaks.ps1",  "default": true  },
-    { "id": "telemetry",     "name": "Minimize telemetry",         "description": "Set Windows telemetry policy to the lowest allowed level",   "category": "Tweaks", "method": "script", "payload": "Disable-Telemetry.ps1",   "default": false }
+    {
+      "id": "powerplan", "name": "High Performance power plan",
+      "description": "Activate the High Performance power scheme",
+      "category": "Tweaks", "method": "script", "payload": "Set-PowerPlanHigh.ps1", "default": true,
+      "check": { "type": "powerplan", "guid": "8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c" }
+    },
+    {
+      "id": "explorer", "name": "Explorer tweaks",
+      "description": "Show file extensions, hidden files, open to This PC",
+      "category": "Tweaks", "method": "script", "payload": "Set-ExplorerTweaks.ps1", "default": true,
+      "check": [
+        { "type": "registry", "path": "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced", "name": "HideFileExt", "value": 0 },
+        { "type": "registry", "path": "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced", "name": "Hidden", "value": 1 },
+        { "type": "registry", "path": "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced", "name": "LaunchTo", "value": 1 }
+      ]
+    },
+    {
+      "id": "telemetry", "name": "Minimize telemetry",
+      "description": "Set Windows telemetry policy to the lowest allowed level",
+      "category": "Tweaks", "method": "script", "payload": "Disable-Telemetry.ps1", "default": false,
+      "check": { "type": "registry", "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection", "name": "AllowTelemetry", "value": 0 }
+    }
   ]
 }

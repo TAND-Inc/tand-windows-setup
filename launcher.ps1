@@ -19,8 +19,9 @@
     the primary method is unavailable or fails.
 
     The menu reopens after each run so multiple batches can be applied in one session.
-    Already-installed items are detected from the uninstall registry and labelled with
-    their version.
+    winget status is checked automatically when the menu opens. App items are detected
+    as installed (with version) from the uninstall registry; tweak items with a `check`
+    are detected as already applied from current system state.
 #>
 
 # ============================================================================
@@ -45,6 +46,7 @@ Add-Type -AssemblyName WindowsBase
 
 $script:WingetAvailable = $false
 $script:WingetTried     = $false
+$script:Applied         = @()   # ids run successfully this session
 
 # ============================================================================
 #  HELPERS
@@ -75,9 +77,8 @@ function Get-InstalledPrograms {
     <#
       Snapshot of installed desktop programs from the uninstall registry keys
       (HKLM 64-bit, HKLM 32-bit, HKCU). Returns objects with Name + Version.
-      This works WITHOUT winget, which matters on a fresh LTSC box, and it picks
-      up anything installed via MSI or a normal EXE installer. Note: MSIX/Store
-      apps (e.g. Windows Terminal) do NOT appear here.
+      Works WITHOUT winget (important on a fresh LTSC box) and covers MSI/EXE
+      installs. Note: MSIX/Store apps (e.g. Windows Terminal) do NOT appear here.
     #>
     $paths = @(
         'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
@@ -100,25 +101,65 @@ function Get-InstalledPrograms {
     $list
 }
 
-function Get-ItemInstallInfo {
+function Test-ItemApplied {
     <#
-      Decide whether a manifest item is already installed, and at what version.
-      Only app methods are detectable; tweak/script items always return $null.
-      Match on the optional `detect` string, falling back to the item `name`.
+      Evaluate an item's optional `check` (a single condition or an array; all
+      must pass) to decide whether the tweak is already in place. Supported types:
+        registry  -> path/name/value compared against the current registry value
+        powerplan -> guid present in the active power scheme
     #>
-    param($Item, $Installed)
+    param($Check)
 
-    if (@('winget', 'choco', 'download') -notcontains $Item.method) { return $null }
-
-    $needle =
-        if (($Item.PSObject.Properties.Name -contains 'detect') -and $Item.detect) { $Item.detect }
-        else { $Item.name }
-
-    $hit = $Installed | Where-Object { $_.Name -like "*$needle*" } | Select-Object -First 1
-    if ($hit) {
-        $ver = if ($hit.Version) { $hit.Version } else { 'unknown' }
-        return [pscustomobject]@{ Installed = $true; Version = $ver }
+    foreach ($c in @($Check)) {
+        switch ($c.type) {
+            'registry' {
+                try {
+                    $val = (Get-ItemProperty -Path $c.path -Name $c.name -ErrorAction Stop).$($c.name)
+                } catch { return $false }
+                if ([string]$val -ne [string]$c.value) { return $false }
+            }
+            'powerplan' {
+                $active = (powercfg /getactivescheme 2>$null | Out-String)
+                if ($active -notmatch [regex]::Escape($c.guid)) { return $false }
+            }
+            default { return $false }
+        }
     }
+    return $true
+}
+
+function Get-ItemStatus {
+    <#
+      Return $null, or an object { State; Label } describing how to mark the item:
+        applied   -> tweak detected in place (via `check`) or run this session
+        installed -> app found in the uninstall registry (with version)
+    #>
+    param($Item, $Installed, $AppliedIds)
+
+    # 1) Explicit state check (tweaks).
+    if (($Item.PSObject.Properties.Name -contains 'check') -and $Item.check) {
+        if (Test-ItemApplied -Check $Item.check) {
+            return [pscustomobject]@{ State = 'applied'; Label = 'Applied' }
+        }
+    }
+
+    # 2) Ran successfully this session (covers scripts without a `check`).
+    if ($AppliedIds -contains $Item.id) {
+        return [pscustomobject]@{ State = 'applied'; Label = 'Applied this run' }
+    }
+
+    # 3) Installed app (winget/choco/download) via registry name match.
+    if (@('winget', 'choco', 'download') -contains $Item.method) {
+        $needle =
+            if (($Item.PSObject.Properties.Name -contains 'detect') -and $Item.detect) { $Item.detect }
+            else { $Item.name }
+        $hit = $Installed | Where-Object { $_.Name -like "*$needle*" } | Select-Object -First 1
+        if ($hit) {
+            $ver = if ($hit.Version) { $hit.Version } else { 'unknown' }
+            return [pscustomobject]@{ State = 'installed'; Label = "Installed - Version: $ver" }
+        }
+    }
+
     return $null
 }
 
@@ -131,7 +172,7 @@ function Get-WingetStatus {
         if ($ver) { return "winget is installed ($ver)." }
         return "winget is installed."
     }
-    return "winget is NOT installed. It will be bootstrapped automatically when a winget item runs."
+    return "winget is NOT installed. Click Install winget, or it will be bootstrapped when a winget item runs."
 }
 
 function Install-Winget {
@@ -275,6 +316,7 @@ function Invoke-ToolkitItem {
     try {
         Invoke-Install -Spec $Item -BaseUrl $BaseUrl
         Write-Host "    done." -ForegroundColor Green
+        $script:Applied += $Item.id
     } catch {
         $primaryErr = $_
         $hasFallback = ($Item.PSObject.Properties.Name -contains 'fallback') -and $Item.fallback
@@ -284,6 +326,7 @@ function Invoke-ToolkitItem {
             try {
                 Invoke-Install -Spec $Item.fallback -BaseUrl $BaseUrl
                 Write-Host "    done (via fallback)." -ForegroundColor Green
+                $script:Applied += $Item.id
             } catch {
                 Write-Warning "    FALLBACK FAILED: $_"
             }
@@ -295,10 +338,11 @@ function Invoke-ToolkitItem {
 
 function Show-ToolkitMenu {
     <#
-      Build a fresh WPF window from the manifest, detecting installed state each
-      time it opens, and return @{ Action = 'run'|'close'; Selected = @(items) }.
+      Build a fresh WPF window from the manifest, auto-checking winget and
+      detecting installed/applied state each time it opens. Returns
+      @{ Action = 'run'|'installwinget'|'close'; Selected = @(items) }.
     #>
-    param($Manifest)
+    param($Manifest, $AppliedIds)
 
     $installed = Get-InstalledPrograms
 
@@ -325,10 +369,11 @@ function Show-ToolkitMenu {
     <Border Grid.Row="1" BorderBrush="#45475A" BorderThickness="1" CornerRadius="6"
             Background="#181825" Padding="10" Margin="0,0,0,10">
       <DockPanel LastChildFill="True">
-        <Button x:Name="WingetCheckBtn" Content="Check winget" Width="120" Height="30"
-                DockPanel.Dock="Left" Background="#45475A" Foreground="#CDD6F4" BorderThickness="0"/>
-        <TextBlock x:Name="WingetStatus" Text="winget status unknown - click &quot;Check winget&quot;."
-                   VerticalAlignment="Center" Margin="12,0,0,0" Foreground="#A6ADC8" TextWrapping="Wrap"/>
+        <Button x:Name="WingetInstallBtn" Content="Install winget" Width="120" Height="30"
+                DockPanel.Dock="Right" Background="#F38BA8" Foreground="#1E1E2E"
+                FontWeight="Bold" BorderThickness="0" Visibility="Collapsed"/>
+        <TextBlock x:Name="WingetStatus" Text="Checking winget..." VerticalAlignment="Center"
+                   Margin="0,0,12,0" Foreground="#A6ADC8" TextWrapping="Wrap"/>
       </DockPanel>
     </Border>
 
@@ -366,12 +411,13 @@ function Show-ToolkitMenu {
         $panel.AddChild($header)
 
         foreach ($item in $group.Group) {
-            $info = Get-ItemInstallInfo -Item $item -Installed $installed
+            $status = Get-ItemStatus -Item $item -Installed $installed -AppliedIds $AppliedIds
 
             $cb = New-Object Windows.Controls.CheckBox
-            if ($info) {
-                $cb.Content    = "$($item.name)  (Installed - Version: $($info.Version))"
-                $cb.Foreground = New-Brush '#A6E3A1'   # green = already installed
+            if ($status) {
+                $cb.Content = "$($item.name)  ($($status.Label))"
+                if ($status.State -eq 'installed') { $cb.Foreground = New-Brush '#A6E3A1' }  # green
+                else                               { $cb.Foreground = New-Brush '#94E2D5' }  # teal = applied
             } else {
                 $cb.Content    = $item.name
                 $cb.Foreground = New-Brush '#CDD6F4'
@@ -385,23 +431,31 @@ function Show-ToolkitMenu {
         }
     }
 
+    # Auto-check winget on open.
+    $statusBlock = $window.FindName('WingetStatus')
+    $wgInstall   = $window.FindName('WingetInstallBtn')
+    $wgStatus    = Get-WingetStatus
+    $statusBlock.Text = $wgStatus
+    if ($wgStatus -like '*NOT installed*') {
+        $statusBlock.Foreground = New-Brush '#F38BA8'   # red
+        $wgInstall.Visibility   = 'Visible'
+    } else {
+        $statusBlock.Foreground = New-Brush '#A6E3A1'   # green
+        $wgInstall.Visibility   = 'Collapsed'
+    }
+
     # Selection buttons.
     $window.FindName('SelectAllBtn').Add_Click({   foreach ($c in $checkboxes) { $c.IsChecked = $true } })
     $window.FindName('SelectNoneBtn').Add_Click({  foreach ($c in $checkboxes) { $c.IsChecked = $false } })
     $window.FindName('RecommendedBtn').Add_Click({ foreach ($c in $checkboxes) { $c.IsChecked = [bool]$c.Tag.default } })
 
-    # winget status button.
-    $statusBlock = $window.FindName('WingetStatus')
-    $window.FindName('WingetCheckBtn').Add_Click({
-        $msg = Get-WingetStatus
-        $statusBlock.Text = $msg
-        if ($msg -like '*NOT installed*') { $statusBlock.Foreground = New-Brush '#F38BA8' }
-        else                              { $statusBlock.Foreground = New-Brush '#A6E3A1' }
-    })
-
     # Result plumbing.
     $script:MenuAction   = 'close'
     $script:MenuSelected = @()
+    $wgInstall.Add_Click({
+        $script:MenuAction = 'installwinget'
+        $window.Close()
+    })
     $window.FindName('RunBtn').Add_Click({
         $script:MenuSelected = @($checkboxes | Where-Object { $_.IsChecked } | ForEach-Object { $_.Tag })
         $script:MenuAction   = 'run'
@@ -437,16 +491,27 @@ $manifest = Get-Manifest -Url "$BaseUrl/config/apps.json"
 if (-not $manifest.items) { throw "Manifest contained no items." }
 
 # ============================================================================
-#  MAIN LOOP  (menu -> run -> reopen menu, until Close)
+#  MAIN LOOP  (menu -> run / install winget -> reopen menu, until Close)
 # ============================================================================
 do {
-    $menu = Show-ToolkitMenu -Manifest $manifest
+    $menu = Show-ToolkitMenu -Manifest $manifest -AppliedIds $script:Applied
 
-    if ($menu.Action -ne 'run') { break }
+    if ($menu.Action -eq 'close') { break }
 
+    if ($menu.Action -eq 'installwinget') {
+        if (-not $script:WingetAvailable) {
+            $script:WingetTried     = $true
+            $script:WingetAvailable = Install-Winget
+        } else {
+            Write-Host "winget already available." -ForegroundColor Green
+        }
+        continue   # reopen menu, which re-checks winget
+    }
+
+    # Action = 'run'
     if (-not $menu.Selected -or $menu.Selected.Count -eq 0) {
         Write-Host "Nothing selected." -ForegroundColor Yellow
-        continue   # reopen the menu
+        continue
     }
 
     # Bootstrap winget once per session, only if something selected needs it.

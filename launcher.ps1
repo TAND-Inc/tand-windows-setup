@@ -303,6 +303,19 @@ function Invoke-Install {
                 Remove-Item $tmp -ErrorAction SilentlyContinue
             }
         }
+        'irm' {
+            # Run an external script via irm | iex (e.g. Chris Titus WinUtil).
+            # This executes third-party code from the internet, so confirm first.
+            $url = $Spec.payload
+            if (-not $url) { throw "irm item has no payload (url)." }
+            Write-Host "    external script: $url" -ForegroundColor Yellow
+            $ans = Read-Host "    Run this external script from the internet? (y/N)"
+            if ($ans -notmatch '^(y|yes)$') {
+                Write-Host "    skipped." -ForegroundColor DarkGray
+                return
+            }
+            Invoke-Expression (Invoke-RestMethod -Uri $url -UseBasicParsing)
+        }
         default {
             throw "Unknown method '$($Spec.method)'."
         }

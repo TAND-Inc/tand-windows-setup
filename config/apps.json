@@ -108,8 +108,27 @@
     },
     { "id": "slack",         "name": "Slack",              "description": "Team chat",                           "category": "Comms",      "method": "winget", "payload": "SlackTechnologies.Slack",        "default": false },
 
+    {
+      "id": "monday", "name": "monday.com Desktop", "description": "monday.com Work OS desktop app",
+      "category": "Productivity", "method": "download",
+      "url": "https://monday.com/desktop-app/monday-msi-latest.msi",
+      "file": "monday-desktop.msi", "args": "/qn /norestart",
+      "detect": "monday.com", "default": false
+    },
+
     { "id": "anydesk",       "name": "AnyDesk",            "description": "Remote support",                      "category": "Remote",     "method": "winget", "payload": "AnyDeskSoftwareGmbH.AnyDesk",    "default": false },
     { "id": "teamviewer",    "name": "TeamViewer",         "description": "Remote support",                      "category": "Remote",     "method": "winget", "payload": "TeamViewer.TeamViewer",          "default": false },
+
+    {
+      "id": "createuser", "name": "Create local user",
+      "description": "Create a local Windows account (prompts for name and password)",
+      "category": "System", "method": "script", "payload": "New-LocalUserAccount.ps1", "default": false
+    },
+    {
+      "id": "winutil", "name": "Chris Titus WinUtil",
+      "description": "Launch ChrisTitusTech WinUtil (runs irm christitus.com/win | iex)",
+      "category": "System", "method": "irm", "payload": "https://christitus.com/win", "default": false
+    },
 
     {
       "id": "powerplan", "name": "High Performance power plan",

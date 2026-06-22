@@ -129,6 +129,16 @@
       "description": "Launch ChrisTitusTech WinUtil (runs irm christitus.com/win | iex)",
       "category": "System", "method": "irm", "payload": "https://christitus.com/win", "default": false
     },
+    {
+      "id": "export-drivers", "name": "Export drivers (backup)",
+      "description": "Back up all third-party drivers to a folder you choose (Export-WindowsDriver, DISM fallback)",
+      "category": "System", "method": "script", "payload": "Export-Drivers.ps1", "default": false
+    },
+    {
+      "id": "import-drivers", "name": "Import drivers (restore)",
+      "description": "Install all drivers from a folder you choose (pnputil /add-driver /subdirs /install)",
+      "category": "System", "method": "script", "payload": "Import-Drivers.ps1", "default": false
+    },
 
     {
       "id": "powerplan", "name": "High Performance power plan",
